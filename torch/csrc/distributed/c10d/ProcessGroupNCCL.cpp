@@ -819,12 +819,26 @@ void ProcessGroupNCCL::abort(c10::optional<std::string> abortReason) {
   abortCommsFromMap(inInitializationCommMap_, rank_, abortReason);
 }
 
-ProcessGroupNCCL::~ProcessGroupNCCL() {
+void ProcessGroupNCCL::shutdown() {
+  // Don't join threads here since the purpose of this method is to abort all
+  // communicators and signal the threads to exit. Joining on the threads could
+  // potentially block and hence avoid it in this method.
   terminateProcessGroup_.store(true);
 
+  std::string abortReason = c10::str("Process Group shutdown on rank ", rank_);
+  abort(abortReason);
+
   workMetaListCV_.notify_one();
+}
+
+ProcessGroupNCCL::~ProcessGroupNCCL() {
+  terminateProcessGroup_.store(true);
+  workMetaListCV_.notify_one();
+
 #ifdef ENABLE_NCCL_ERROR_CHECKING
-  ncclCommWatchdogThread_.join();
+  if (ncclCommWatchdogThread_.joinable()) {
+    ncclCommWatchdogThread_.join();
+  }
 #endif
 
   // Abort all NCCL Communicators on Process Group Destruction
