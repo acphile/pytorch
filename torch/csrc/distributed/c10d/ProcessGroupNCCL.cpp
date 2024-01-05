@@ -625,8 +625,7 @@ ProcessGroupNCCL::ProcessGroupNCCL(
       traceKeyEnd_(getTraceEndKey("NCCL", rank)),
       terminateProcessGroup_(false),
       terminateHeartbeatMonitorThread_(false),
-      collectiveDebugInfoMode_(false),
-      uid_(process_group_id++) {
+      collectiveDebugInfoMode_(false) {
   TORCH_CHECK_WITH(
       ValueError,
       at::cuda::getNumGPUs() != 0,
