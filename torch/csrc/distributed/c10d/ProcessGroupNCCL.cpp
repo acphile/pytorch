@@ -639,11 +639,7 @@ ProcessGroupNCCL::ProcessGroupNCCL(
   monitorThreadEnabled_.store(parseEnvVarFlag(TORCH_NCCL_ENABLE_MONITORING));
   heartbeatTimeoutInSec_ = parseEnvVarIntDefault(
       TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC, 60 * 2 /*2 Mins*/);
-#ifdef ENABLE_NCCL_ERROR_CHECKING
-  enableTiming_.store(
-      parseEnvVarFlag(NCCL_ENABLE_TIMING) || desyncDebug_ ||
-      parseEnvVarIntDefault("TORCH_NCCL_TRACE_BUFFER_SIZE", 0) > 0);
-#endif
+
   avoidRecordStreams_ = parseEnvVarFlag(TORCH_NCCL_AVOID_RECORD_STREAMS);
 
   if (blockingWait_) {
@@ -875,11 +871,6 @@ ProcessGroupNCCL::~ProcessGroupNCCL() {
 void dump_debugging_info() {
   LOG(ERROR)
       << "No PGNCCL's watchdog heartbeat detected, so we are dumping debug info.";
-  if (parseEnvVarIntDefault("TORCH_NCCL_TRACE_BUFFER_SIZE", 0) > 0) {
-    // TODO: Find the right and proper way to dump the debug info.
-    // We cannot print out debugging info directly.
-    LOG(ERROR) << "nccl_trace: " << dump_nccl_trace();
-  }
 }
 
 void ProcessGroupNCCL::terminateProcess(std::string errMsg) {
