@@ -1437,24 +1437,22 @@ void ProcessGroupNCCL::startCoalescing() {
 }
 
 c10::intrusive_ptr<Work> ProcessGroupNCCL::endCoalescing() {
-  if (!nccl_use_nonblocking() ||
-      coalescedComms_.size() == 0) { // There is no actual work being coalesced
+  if (coalescedComms_.size() == 0) {
+    // There is no actual work being coalesced, return here
     groupEnd();
-  } else {
-    // `coalescedComms_` should have same set of comms across collectives
-    auto comms = coalescedComms_[0];
-    groupEndNonblocking(comms);
-  }
-
-  coalescing_state_ = 0;
-
-  if (coalescedDevices_.size() == 0) {
-    // There is no actual work being coalesced
     return nullptr;
   }
 
+  // `coalescedComms_` should have same set of comms across collectives
+  auto comms = coalescedComms_[0];
   // `coalescedDevices_` should have same set of devices across collectives
   auto devices = coalescedDevices_[0];
+
+  if (nccl_use_nonblocking()) {
+    groupEndNonblocking(comms);
+  } else {
+    groupEnd();
+  }
 
   // Create Work object
   auto work = initWork(
@@ -1468,6 +1466,7 @@ c10::intrusive_ptr<Work> ProcessGroupNCCL::endCoalescing() {
   for (const auto i : c10::irange(devices.size())) {
     auto& devEvent = (*work->ncclEndEvents_)[i];
     devEvent.record(ncclStreams[i]);
+    work->ncclComms_[i] = comms[i];
   }
 
   // Set appropriate work parameters.
@@ -1483,13 +1482,20 @@ c10::intrusive_ptr<Work> ProcessGroupNCCL::endCoalescing() {
   c10::cuda::CaptureStatus capture_status =
       c10::cuda::currentStreamCaptureStatusMayInitCtx();
 
+  // Notify graphs before we check the capture status preemptively
+  at::cuda::CUDAGraph::inc_pending_event_queries();
+
   if ((coalescing_state_ & CoalColl) &&
       capture_status == c10::cuda::CaptureStatus::None) {
     workEnqueue(work);
     // TODO: it seems we never enqueue work for single send/recv or batch P2P,
     // see the `pointToPoint` function. This should be fixed. Otherwise, we risk
     // not being able to abort hanged P2P ops.
+  } else {
+    at::cuda::CUDAGraph::dec_pending_event_queries();
   }
+
+  coalescing_state_ = 0;
 
   return work;
 }
